@@ -74,6 +74,50 @@ function initialiseListSectionFilters() {
                 // Adding the category select wrapper to the filter wrapper
                 filterWrapper.appendChild(categoriesWrapper);
             }
+            // Adding the pricing filter if it is enabled
+            if (targetBlock.getAttribute('data-pricing-enabled') === 'true') {
+                // Creating the pricing select bar and adding its classes/event listener
+                let selectBar = document.createElement('select');
+                selectBar.id = 'list-section-pricing-bar';
+                selectBar.addEventListener('change', updateListSection);
+                // Creating the default option for the select bar
+                let defaultOption = document.createElement('option');
+                defaultOption.value = 'all';
+                defaultOption.innerText = 'All Pricing';
+                selectBar.appendChild(defaultOption);
+                // Creating the pricing options
+                let freeOption = document.createElement('option');
+                freeOption.value = 'Free';
+                freeOption.innerText = 'Free';
+                selectBar.appendChild(freeOption);
+                let subscriptionOption = document.createElement('option');
+                subscriptionOption.value = 'Subscription';
+                subscriptionOption.innerText = 'Subscription';
+                selectBar.appendChild(subscriptionOption);
+                let lifetimeOption = document.createElement('option');
+                lifetimeOption.value = 'Lifetime';
+                lifetimeOption.innerText = 'Lifetime Access';
+                selectBar.appendChild(lifetimeOption);
+                // Creating the pricing select wrapper and adding its classes and id
+                let pricingWrapper = document.createElement('div');
+                pricingWrapper.id = "list-section-filters-pricing-wrapper";
+                pricingWrapper.classList.add('form-item', 'field', 'select');
+                // Adding the pricing select to the wrapper
+                pricingWrapper.appendChild(selectBar);
+                // Creating the dropdown icon and adding it to the pricing select wrapper
+                let dropdownIcon = document.createElement('div');
+                dropdownIcon.classList.add('select-dropdown-icon');
+                dropdownIcon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="12"><path fill-rule="evenodd" clip-rule="evenodd" d="M0.439453 1.49825L1.56057 0.501709L9.00001 8.87108L16.4395 0.501709L17.5606 1.49825L9.00001 11.1289L0.439453 1.49825Z"></path></svg>';
+                pricingWrapper.appendChild(dropdownIcon);
+                // Creating the form styling div and adding its classes and inner elements
+                let formStylings = document.createElement('span');
+                formStylings.classList.add('form-input-effects');
+                formStylings.innerHTML = '<span class="form-input-effects-border"></span>';
+                // Adding the form styling to the pricing select wrapper
+                pricingWrapper.appendChild(formStylings);
+                // Adding the pricing select wrapper to the filter wrapper
+                filterWrapper.appendChild(pricingWrapper);
+            }
             if (targetBlock.getAttribute('data-sorting-enabled') === 'true') {
                 // Creating the categories select bar and adding its classes/event listener
                 let selectBar = document.createElement('select');
@@ -154,6 +198,7 @@ function initialiseListSectionFilters() {
             // Finding the category from the description text, looking for the text '#category/'
             let text = description.innerText;
             let categoryMatches = text.match(/#category\/([^\/]*)\//g);
+            let pricingMatch = text.match(/#pricing\/([^\/]*)\//); // Extract pricing
             // If a category is found
             if (categoryMatches) {
                 let listItem = description.closest('.list-item');
@@ -209,18 +254,34 @@ function initialiseListSectionFilters() {
                 }
     
                 // Remove all category tags from the description text
-                description.innerText = text.replace(/#category\/([^\/]*)\//g, '');
-                if (description.innerText.trim() === '') {
-                    description.remove();
+                text = text.replace(/#category\/([^\/]*)\//g, '');
+            }
+
+            // If pricing is found
+            if (pricingMatch) {
+                let listItem = description.closest('.list-item');
+                if (listItem) {
+                    let pricing = pricingMatch[1];
+                    listItem.setAttribute('data-pricing', pricing);
                 }
-    
-                // Add unique categories to the categories array
+                // Remove pricing tag from the description text
+                text = text.replace(/#pricing\/([^\/]*)\//g, '');
+            }
+
+            // Add unique categories to the categories array
+            if (categoryMatches) {
                 categoryMatches.forEach(match => {
                     let category = match.match(/#category\/([^\/]*)\//)[1];
                     if (!categories.includes(category)) {
                         categories.push(category);
                     }
                 });
+            }
+
+            // Update description and remove if empty
+            description.innerText = text;
+            if (description.innerText.trim() === '') {
+                description.remove();
             }
         });
         return categories;
@@ -245,11 +306,13 @@ function initialiseListSectionFilters() {
     
         let searchBar = document.querySelector('#list-section-search-bar');
         let selectBar = document.querySelector('#list-section-select-bar');
+        let pricingBar = document.querySelector('#list-section-pricing-bar');
         let sortingBar = document.querySelector('#list-section-sorting-bar');
-    
+
         // Get the current values of the filters
         let searchQuery = searchBar ? searchBar.value.toLowerCase().trim() : '';
         let categoryQuery = selectBar ? selectBar.value : 'all';
+        let pricingQuery = pricingBar ? pricingBar.value : 'all';
         let sortOption = sortingBar ? sortingBar.value : 'none';
     
         let listItems = Array.from(listSection.querySelectorAll('.list-item')); // Convert NodeList to Array
@@ -295,20 +358,24 @@ function initialiseListSectionFilters() {
                 let itemName = item.querySelector('.list-item-content__title').innerText.toLowerCase();
                 let itemDescription = item.querySelector('.list-item-content__description').innerText.toLowerCase();
                 let itemCategories = item.getAttribute('data-category') ? item.getAttribute('data-category').split(',') : [];
-    
+                let itemPricing = item.getAttribute('data-pricing') || '';
+
                 // Check if the search query matches the name, description, or any category
                 const matchesSearch = !searchQuery || (
                     itemName.includes(searchQuery) ||
                     itemDescription.includes(searchQuery) ||
                     itemCategories.some(category => category.toLowerCase().includes(searchQuery))
                 );
-    
+
                 // Check if the item matches the selected category
                 const matchesCategory = categoryQuery === 'all' || itemCategories.includes(categoryQuery);
-    
+
+                // Check if the item matches the selected pricing
+                const matchesPricing = pricingQuery === 'all' || itemPricing === pricingQuery;
+
                 // Toggle visibility based on filters with smooth animation
                 setTimeout(() => {
-                    if (matchesSearch && matchesCategory) {
+                    if (matchesSearch && matchesCategory && matchesPricing) {
                         item.classList.remove('hidden');
                         setTimeout(() => {
                             item.classList.add('visible');
