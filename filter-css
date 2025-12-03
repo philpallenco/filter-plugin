@@ -1,0 +1,188 @@
+section:has(#list-section-filter-wrapper) .list-item {
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+section:has(#list-section-filter-wrapper) .list-item.visible {
+  opacity: 1 !important;
+}
+
+section:has(#list-section-filter-wrapper) .list-item.hidden {
+    display: none;
+}
+
+section:has(#list-section-filter-wrapper) .user-items-list {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.list-item-categories {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+#list-section-filter-wrapper {
+    box-sizing: border-box;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-left: var(--sqs-site-gutter);
+    margin-right: var(--sqs-site-gutter);
+    order: 2;
+  }
+
+  .list-section-title {
+    order: 1;
+  }
+
+  .user-items-list-item-container {
+    order: 3;
+  }
+  
+  .list-section-button-container {
+    order: 4;
+  }
+  
+  @media (max-width: 768px) {
+    #list-section-filter-wrapper {
+      flex-direction: column;
+    }
+  }
+  
+  #list-section-filter-wrapper.inset {
+    max-width: var(--sqs-site-max-width);
+    width: 100%;
+    margin-top: 0;
+    margin-right: auto;
+    margin-left: auto;
+    padding-left: var(--sqs-site-gutter);
+    padding-right: var(--sqs-site-gutter);
+  }
+  
+  #list-section-filters-search-bar-wrapper, #list-section-filters-categories-wrapper, #list-section-filters-sorting-wrapper {
+    position: relative;
+    flex-basis: 22%
+  }
+
+  #list-section-filters-search-bar-wrapper {
+    display: grid;
+  }
+  
+  #list-section-search-bar {
+    box-sizing: border-box;
+    width: 100%;
+    color: var(--dynamic-input-text-color) !important;
+    font-weight: var(--form-block-input-text-font-font-weight) !important;
+    font-family: var(--form-block-input-text-font-font-family) !important;
+    font-size: calc(var(--form-block-input-text-font-font-size-value)* 1rem) !important;
+    line-height: var(--form-block-input-text-font-line-height) !important;
+    letter-spacing: var(--form-block-input-text-font-letter-spacing) !important;
+    text-transform: var(--form-block-input-text-font-text-transform) !important;
+    font-style: var(--form-block-input-text-font-font-style) !important;
+  }
+
+  #list-section-search-bar::placeholder {
+    opacity: 1 !important;
+    color: hsla(var(--dynamic-input-text-color-hsl, var(--fallback-black-hsl)), calc(var(--dynamic-input-text-color-a, 1) * 0.55));
+    font-weight: var(--form-block-placeholder-text-font-font-weight) !important;
+    font-family: var(--form-block-placeholder-text-font-font-family) !important;
+    font-size: calc(var(--form-block-placeholder-text-font-font-size-value)* 1rem) !important;
+    line-height: var(--form-block-placeholder-text-font-line-height) !important;
+    letter-spacing: var(--form-block-placeholder-text-font-letter-spacing) !important;
+    text-transform: var(--form-block-placeholder-text-font-text-transform) !important;
+    font-style: var(--form-block-placeholder-text-font-font-style) !important;
+  }
+
+  #list-section-filters-categories-wrapper, #list-section-filters-sorting-wrapper {
+    display: flex;
+    align-items: center;
+  }
+
+  .select-dropdown-icon {
+    cursor: pointer;
+    pointer-events: none;
+    width: 18px;
+    height: 12px;
+    position: absolute;
+    right: calc(var(--form-field-border-thickness) + var(--form-field-padding-horizontal));
+    color: var(--dynamic-input-text-color);
+    z-index: 1;
+  }
+
+  .select-dropdown-icon svg {
+    display: block;
+  }
+  
+  #list-section-select-bar {
+    cursor: pointer;
+    box-sizing: border-box;
+    width: 100%;
+    appearance: none;
+    -webkit-appearance: none;
+    color: var(--dynamic-input-text-color) !important;
+    font-weight: var(--form-block-select-dropdown-text-font-font-weight) !important;
+    font-family: var(--form-block-select-dropdown-text-font-font-family) !important;
+    font-size: calc(var(--form-block-select-dropdown-text-font-font-size-value)* 1rem) !important;
+    line-height: var(--form-block-select-dropdown-text-font-line-height) !important;
+    letter-spacing: var(--form-block-select-dropdown-text-font-letter-spacing) !important;
+    text-transform: var(--form-block-select-dropdown-text-font-text-transform) !important;
+    font-style: var(--form-block-select-dropdown-text-font-font-style) !important;
+  }
+  
+  #list-section-select-bar::placeholder {
+    opacity: 1 !important;
+    color: hsla(var(--dynamic-input-text-color-hsl, var(--fallback-black-hsl)), calc(var(--dynamic-input-text-color-a, 1) * 0.55)) !important;
+    font-weight: var(--form-block-placeholder-text-font-font-weight) !important;
+    font-family: var(--form-block-placeholder-text-font-font-family) !important;
+    font-size: calc(var(--form-block-placeholder-text-font-font-size-value)* 1rem) !important;
+    line-height: var(--form-block-placeholder-text-font-line-height) !important;
+    letter-spacing: var(--form-block-placeholder-text-font-letter-spacing) !important;
+    text-transform: var(--form-block-placeholder-text-font-text-transform) !important;
+    font-style: var(--form-block-placeholder-text-font-font-style) !important;
+  }
+
+  #list-section-select-bar option {
+    background: hsla(var(--dynamic-fill-color-hsl, var(--fallback-white-hsl)), calc(var(--dynamic-fill-color-a, 1) * var(--solid-alpha-modifier)));
+  }
+
+  #list-section-select-bar option:hover {
+    background: var(--dynamic-fill-color-hsl);
+  }
+
+  #list-section-sorting-bar {
+    cursor: pointer;
+    box-sizing: border-box;
+    width: 100%;
+    appearance: none;
+    -webkit-appearance: none;
+    color: var(--dynamic-input-text-color) !important;
+    font-weight: var(--form-block-select-dropdown-text-font-font-weight) !important;
+    font-family: var(--form-block-select-dropdown-text-font-font-family) !important;
+    font-size: calc(var(--form-block-select-dropdown-text-font-font-size-value)* 1rem) !important;
+    line-height: var(--form-block-select-dropdown-text-font-line-height) !important;
+    letter-spacing: var(--form-block-select-dropdown-text-font-letter-spacing) !important;
+    text-transform: var(--form-block-select-dropdown-text-font-text-transform) !important;
+    font-style: var(--form-block-select-dropdown-text-font-font-style) !important;
+  }
+  
+  #list-section-sorting-bar::placeholder {
+    opacity: 1 !important;
+    color: hsla(var(--dynamic-input-text-color-hsl, var(--fallback-black-hsl)), calc(var(--dynamic-input-text-color-a, 1) * 0.55)) !important;
+    font-weight: var(--form-block-placeholder-text-font-font-weight) !important;
+    font-family: var(--form-block-placeholder-text-font-font-family) !important;
+    font-size: calc(var(--form-block-placeholder-text-font-font-size-value)* 1rem) !important;
+    line-height: var(--form-block-placeholder-text-font-line-height) !important;
+    letter-spacing: var(--form-block-placeholder-text-font-letter-spacing) !important;
+    text-transform: var(--form-block-placeholder-text-font-text-transform) !important;
+    font-style: var(--form-block-placeholder-text-font-font-style) !important;
+  }
+
+  #list-section-sorting-bar option {
+    background: hsla(var(--dynamic-fill-color-hsl, var(--fallback-white-hsl)), calc(var(--dynamic-fill-color-a, 1) * var(--solid-alpha-modifier)));
+  }
+
+  #list-section-sorting-bar option:hover {
+    background: var(--dynamic-fill-color-hsl);
+  }
