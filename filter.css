@@ -17,7 +17,7 @@ section:has(#list-section-filter-wrapper) .user-items-list {
   align-items: stretch;
 }
 
-.list-item-categories {
+.list-item-categories, .list-item-pricing {
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;
@@ -61,7 +61,10 @@ section:has(#list-section-filter-wrapper) .user-items-list {
     padding-right: var(--sqs-site-gutter);
   }
   
-  #list-section-filters-search-bar-wrapper, #list-section-filters-categories-wrapper, #list-section-filters-sorting-wrapper {
+  #list-section-filters-search-bar-wrapper,
+  #list-section-filters-categories-wrapper,
+  #list-section-pricing-bar-wrapper,
+  #list-section-filters-sorting-wrapper {
     position: relative;
     flex-basis: 22%
   }
@@ -95,7 +98,9 @@ section:has(#list-section-filter-wrapper) .user-items-list {
     font-style: var(--form-block-placeholder-text-font-font-style) !important;
   }
 
-  #list-section-filters-categories-wrapper, #list-section-filters-sorting-wrapper {
+  #list-section-filters-categories-wrapper,
+  #list-section-pricing-bar-wrapper,
+  #list-section-filters-sorting-wrapper {
     display: flex;
     align-items: center;
   }
@@ -184,5 +189,41 @@ section:has(#list-section-filter-wrapper) .user-items-list {
   }
 
   #list-section-sorting-bar option:hover {
+    background: var(--dynamic-fill-color-hsl);
+  }
+
+  #list-section-pricing-bar {
+    cursor: pointer;
+    box-sizing: border-box;
+    width: 100%;
+    appearance: none;
+    -webkit-appearance: none;
+    color: var(--dynamic-input-text-color) !important;
+    font-weight: var(--form-block-select-dropdown-text-font-font-weight) !important;
+    font-family: var(--form-block-select-dropdown-text-font-font-family) !important;
+    font-size: calc(var(--form-block-select-dropdown-text-font-font-size-value)* 1rem) !important;
+    line-height: var(--form-block-select-dropdown-text-font-line-height) !important;
+    letter-spacing: var(--form-block-select-dropdown-text-font-letter-spacing) !important;
+    text-transform: var(--form-block-select-dropdown-text-font-text-transform) !important;
+    font-style: var(--form-block-select-dropdown-text-font-font-style) !important;
+  }
+
+  #list-section-pricing-bar::placeholder {
+    opacity: 1 !important;
+    color: hsla(var(--dynamic-input-text-color-hsl, var(--fallback-black-hsl)), calc(var(--dynamic-input-text-color-a, 1) * 0.55)) !important;
+    font-weight: var(--form-block-placeholder-text-font-font-weight) !important;
+    font-family: var(--form-block-placeholder-text-font-font-family) !important;
+    font-size: calc(var(--form-block-placeholder-text-font-font-size-value)* 1rem) !important;
+    line-height: var(--form-block-placeholder-text-font-line-height) !important;
+    letter-spacing: var(--form-block-placeholder-text-font-letter-spacing) !important;
+    text-transform: var(--form-block-placeholder-text-font-text-transform) !important;
+    font-style: var(--form-block-placeholder-text-font-font-style) !important;
+  }
+
+  #list-section-pricing-bar option {
+    background: hsla(var(--dynamic-fill-color-hsl, var(--fallback-white-hsl)), calc(var(--dynamic-fill-color-a, 1) * var(--solid-alpha-modifier)));
+  }
+
+  #list-section-pricing-bar option:hover {
     background: var(--dynamic-fill-color-hsl);
   }
