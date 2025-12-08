@@ -1,370 +1,535 @@
-// Main function to initialise the list section filters
+/**
+ * Filter Plugin for Squarespace List Sections
+ * Optimized for performance with cached DOM queries and batched updates
+ */
 
-function initialiseListSectionFilters() {
-    // Cache DOM elements for better performance
-    const targetBlock = document.querySelector('#filtered-list-section');
-    if (!targetBlock) return;
+(function () {
+    'use strict';
 
-    const cache = {
-        targetBlock,
-        listSection: null,
-        searchBar: null,
-        categorySelect: null,
-        pricingSelect: null,
-        sortingSelect: null,
-        listItems: []
+    /**
+     * Configuration defaults
+     */
+    const CONFIG = {
+        DEBOUNCE_DELAY: 200,
+        ANIMATION_DURATION: 250,
+        SELECTORS: {
+            targetBlock: '#filtered-list-section',
+            listItem: '.list-item',
+            title: '.list-item-content__title',
+            description: '.list-item-content__description',
+            textWrapper: '.list-item-content__text-wrapper',
+            userItemsList: '.user-items-list',
+            listContainer: '.user-items-list ul'
+        }
     };
 
-    // Helper function to find the intended list section using the targeting block
-    function findListSection() {
-        if (cache.listSection) return cache.listSection;
-        cache.listSection = targetBlock.closest('section')?.nextElementSibling;
-        return cache.listSection;
-    }
+    /**
+     * Item data cache - stores pre-computed values to avoid DOM queries during filtering
+     * @type {WeakMap<Element, {title: string, description: string, categories: string[], pricing: string}>}
+     */
+    const itemDataCache = new WeakMap();
 
-    // Debounce helper for search input
-    function debounce(func, wait) {
-        let timeout;
-        return function executedFunction(...args) {
-            const later = () => {
-                clearTimeout(timeout);
-                func(...args);
+    /**
+     * Main filter controller
+     */
+    class FilterController {
+        constructor(targetBlock) {
+            this.targetBlock = targetBlock;
+            this.listSection = null;
+            this.listContainer = null;
+            this.listItems = [];
+            this.categories = new Set();
+
+            // UI element references
+            this.ui = {
+                filterWrapper: null,
+                searchBar: null,
+                categorySelect: null,
+                pricingSelect: null,
+                sortingSelect: null
             };
-            clearTimeout(timeout);
-            timeout = setTimeout(later, wait);
-        };
-    }
 
-    // Helper function to create filter input/select elements
-    function createFilterElement(config) {
-        const { type, id, placeholder, options, eventHandler } = config;
-        const wrapper = document.createElement('div');
-        wrapper.id = `${id}-wrapper`;
-        wrapper.classList.add('form-item', 'field', type);
+            // Configuration from data attributes
+            this.config = this.parseConfig();
+        }
 
-        let inputElement;
-        if (type === 'text') {
-            inputElement = document.createElement('input');
-            inputElement.type = 'text';
-            inputElement.placeholder = placeholder;
-            inputElement.id = id;
-            inputElement.addEventListener('input', eventHandler);
-        } else if (type === 'select') {
-            inputElement = document.createElement('select');
-            inputElement.id = id;
-            inputElement.addEventListener('change', eventHandler);
+        /**
+         * Parse configuration from data attributes
+         */
+        parseConfig() {
+            const get = (attr) => this.targetBlock.getAttribute(attr) === 'true';
+            const getVal = (attr) => this.targetBlock.getAttribute(attr);
+
+            return {
+                searchEnabled: get('data-search-enabled'),
+                categoriesEnabled: get('data-categories-enabled'),
+                pricingEnabled: get('data-pricing-enabled'),
+                sortingEnabled: get('data-sorting-enabled'),
+                displayCategories: get('data-display-categories'),
+                displayPricing: get('data-display-pricing'),
+                horizontalAlignment: getVal('data-horizontal-alignment'),
+                bottomMargin: getVal('data-bottom-margin'),
+                pricingOptions: this.parsePricingOptions(getVal('data-pricing-options'))
+            };
+        }
+
+        /**
+         * Parse custom pricing options or use defaults
+         */
+        parsePricingOptions(optionsStr) {
+            const defaults = [
+                { value: 'all', text: 'All Pricing' },
+                { value: 'Free', text: 'Free' },
+                { value: 'Subscription', text: 'Subscription' },
+                { value: 'Lifetime', text: 'Lifetime Access' }
+            ];
+
+            if (!optionsStr) return defaults;
+
+            try {
+                const custom = JSON.parse(optionsStr);
+                return [{ value: 'all', text: 'All Pricing' }, ...custom];
+            } catch {
+                return defaults;
+            }
+        }
+
+        /**
+         * Initialize the filter system
+         */
+        init() {
+            this.listSection = this.findListSection();
+            if (!this.listSection) return false;
+
+            this.listContainer = this.listSection.querySelector(CONFIG.SELECTORS.listContainer);
+            if (!this.listContainer) return false;
+
+            // Cache all items and extract metadata
+            this.cacheItemsAndMetadata();
+
+            // Build UI
+            this.createFilterUI();
+            this.populateCategoryOptions();
+
+            return true;
+        }
+
+        /**
+         * Find the list section adjacent to the target block
+         */
+        findListSection() {
+            return this.targetBlock.closest('section')?.nextElementSibling ?? null;
+        }
+
+        /**
+         * Cache all list items and extract/cache their metadata
+         * This is the key performance optimization - all text is cached upfront
+         */
+        cacheItemsAndMetadata() {
+            const items = this.listSection.querySelectorAll(CONFIG.SELECTORS.listItem);
+
+            items.forEach(item => {
+                const titleEl = item.querySelector(CONFIG.SELECTORS.title);
+                const descEl = item.querySelector(CONFIG.SELECTORS.description);
+
+                // Get raw text content
+                const rawDescription = descEl?.textContent ?? '';
+
+                // Extract metadata from description
+                const { categories, pricing, cleanText } = this.extractMetadata(rawDescription);
+
+                // Cache computed values for fast filtering
+                const cachedData = {
+                    title: (titleEl?.textContent ?? '').toLowerCase(),
+                    description: cleanText.toLowerCase(),
+                    categories: categories,
+                    pricing: pricing
+                };
+
+                itemDataCache.set(item, cachedData);
+
+                // Store as data attributes for CSS/external access
+                if (categories.length > 0) {
+                    item.setAttribute('data-category', categories.join(','));
+                    categories.forEach(cat => this.categories.add(cat));
+                }
+
+                if (pricing) {
+                    item.setAttribute('data-pricing', pricing);
+                }
+
+                // Update description text (remove metadata tags)
+                if (descEl && cleanText !== rawDescription) {
+                    const p = descEl.querySelector('p');
+                    if (p) {
+                        p.textContent = cleanText.trim();
+                        if (!p.textContent) p.remove();
+                    }
+                }
+
+                // Display tags if enabled
+                if (this.config.displayCategories && categories.length > 0) {
+                    this.displayMetadataTags(item, 'categories', categories);
+                }
+
+                if (this.config.displayPricing && pricing) {
+                    this.displayMetadataTags(item, 'pricing', [pricing]);
+                }
+
+                // Set initial visibility
+                item.classList.add('visible');
+                this.listItems.push(item);
+            });
+        }
+
+        /**
+         * Extract metadata tags from description text
+         */
+        extractMetadata(text) {
+            const categories = [];
+            const categoryRegex = /#category\/([^\/]+)\//g;
+            const pricingRegex = /#pricing\/([^\/]+)\//;
+
+            let match;
+            while ((match = categoryRegex.exec(text)) !== null) {
+                categories.push(match[1]);
+            }
+
+            const pricingMatch = text.match(pricingRegex);
+            const pricing = pricingMatch ? pricingMatch[1] : '';
+
+            // Clean text by removing all metadata tags
+            const cleanText = text
+                .replace(/#category\/[^\/]+\//g, '')
+                .replace(/#pricing\/[^\/]+\//g, '')
+                .trim();
+
+            return { categories, pricing, cleanText };
+        }
+
+        /**
+         * Display metadata as visual tags
+         */
+        displayMetadataTags(item, type, values) {
+            const textWrapper = item.querySelector(CONFIG.SELECTORS.textWrapper);
+            if (!textWrapper) return;
+
+            const containerClass = type === 'categories' ? 'list-item-categories' : 'list-item-pricing';
+            const tagClass = type === 'categories' ? 'list-item-category' : 'list-item-pricing-tag';
+
+            // Remove existing container
+            textWrapper.querySelector(`.${containerClass}`)?.remove();
+
+            // Create container with tags
+            const container = document.createElement('div');
+            container.className = containerClass;
+
+            values.forEach(value => {
+                const tag = document.createElement('span');
+                tag.className = tagClass;
+                tag.textContent = value;
+                container.appendChild(tag);
+            });
+
+            textWrapper.insertBefore(container, textWrapper.firstChild);
+        }
+
+        /**
+         * Create the filter UI components
+         */
+        createFilterUI() {
+            const wrapper = document.createElement('div');
+            wrapper.id = 'list-section-filter-wrapper';
+            wrapper.className = 'sqs-block-form';
+
+            const debouncedUpdate = debounce(() => this.updateFilters(), CONFIG.DEBOUNCE_DELAY);
+            const immediateUpdate = () => this.updateFilters();
+
+            // Search bar
+            if (this.config.searchEnabled) {
+                const { wrapper: searchWrapper, input } = this.createInput({
+                    type: 'text',
+                    id: 'list-section-search-bar',
+                    placeholder: 'Search items...',
+                    onInput: debouncedUpdate
+                });
+                this.ui.searchBar = input;
+                wrapper.appendChild(searchWrapper);
+            }
+
+            // Category select
+            if (this.config.categoriesEnabled) {
+                const { wrapper: catWrapper, input } = this.createSelect({
+                    id: 'list-section-select-bar',
+                    options: [{ value: 'all', text: 'All Categories' }],
+                    onChange: immediateUpdate
+                });
+                this.ui.categorySelect = input;
+                wrapper.appendChild(catWrapper);
+            }
+
+            // Pricing select
+            if (this.config.pricingEnabled) {
+                const { wrapper: priceWrapper, input } = this.createSelect({
+                    id: 'list-section-pricing-bar',
+                    options: this.config.pricingOptions,
+                    onChange: immediateUpdate
+                });
+                this.ui.pricingSelect = input;
+                wrapper.appendChild(priceWrapper);
+            }
+
+            // Sorting select
+            if (this.config.sortingEnabled) {
+                const { wrapper: sortWrapper, input } = this.createSelect({
+                    id: 'list-section-sorting-bar',
+                    options: [
+                        { value: 'none', text: 'Sort by...' },
+                        { value: 'a-z', text: 'Sort A-Z' },
+                        { value: 'z-a', text: 'Sort Z-A' }
+                    ],
+                    onChange: immediateUpdate
+                });
+                this.ui.sortingSelect = input;
+                wrapper.appendChild(sortWrapper);
+            }
+
+            // Apply styling
+            this.applyWrapperStyles(wrapper);
+
+            // Insert into DOM
+            const userItemsList = this.listSection.querySelector(CONFIG.SELECTORS.userItemsList);
+            if (userItemsList) {
+                userItemsList.insertBefore(wrapper, userItemsList.firstChild);
+
+                const listUl = this.listSection.querySelector('ul');
+                if (listUl?.getAttribute('data-layout-width') === 'inset') {
+                    wrapper.classList.add('inset');
+                }
+            }
+
+            this.ui.filterWrapper = wrapper;
+        }
+
+        /**
+         * Create a text input element
+         */
+        createInput({ type, id, placeholder, onInput }) {
+            const wrapper = document.createElement('div');
+            wrapper.id = `${id}-wrapper`;
+            wrapper.className = 'form-item field text';
+
+            const input = document.createElement('input');
+            input.type = type;
+            input.id = id;
+            input.placeholder = placeholder;
+            input.addEventListener('input', onInput);
+
+            wrapper.appendChild(input);
+            wrapper.appendChild(this.createFormEffects());
+
+            return { wrapper, input };
+        }
+
+        /**
+         * Create a select element
+         */
+        createSelect({ id, options, onChange }) {
+            const wrapper = document.createElement('div');
+            wrapper.id = `${id}-wrapper`;
+            wrapper.className = 'form-item field select';
+
+            const select = document.createElement('select');
+            select.id = id;
+            select.addEventListener('change', onChange);
 
             // Add options
             options.forEach(({ value, text }) => {
                 const option = document.createElement('option');
                 option.value = value;
-                option.innerText = text;
-                inputElement.appendChild(option);
+                option.textContent = text;
+                select.appendChild(option);
             });
 
-            // Add dropdown icon for select elements
-            const dropdownIcon = document.createElement('div');
-            dropdownIcon.classList.add('select-dropdown-icon');
-            dropdownIcon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="12"><path fill-rule="evenodd" clip-rule="evenodd" d="M0.439453 1.49825L1.56057 0.501709L9.00001 8.87108L16.4395 0.501709L17.5606 1.49825L9.00001 11.1289L0.439453 1.49825Z"></path></svg>';
-            wrapper.appendChild(inputElement);
-            wrapper.appendChild(dropdownIcon);
+            // Dropdown icon
+            const icon = document.createElement('div');
+            icon.className = 'select-dropdown-icon';
+            icon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="12"><path fill-rule="evenodd" clip-rule="evenodd" d="M0.439453 1.49825L1.56057 0.501709L9.00001 8.87108L16.4395 0.501709L17.5606 1.49825L9.00001 11.1289L0.439453 1.49825Z"></path></svg>';
+
+            wrapper.appendChild(select);
+            wrapper.appendChild(icon);
+            wrapper.appendChild(this.createFormEffects());
+
+            return { wrapper, input: select };
         }
 
-        // Add form styling effects
-        const formStylings = document.createElement('span');
-        formStylings.classList.add('form-input-effects');
-        formStylings.innerHTML = '<span class="form-input-effects-border"></span>';
-
-        if (type === 'text') {
-            wrapper.appendChild(inputElement);
-        }
-        wrapper.appendChild(formStylings);
-
-        return { wrapper, element: inputElement };
-    }
-
-    // Helper function to create the filter components and add them to the list section
-    function addFilterComponents(listSection) {
-        const filterWrapper = document.createElement('div');
-        filterWrapper.id = 'list-section-filter-wrapper';
-        filterWrapper.classList.add('sqs-block-form');
-
-        const debouncedUpdate = debounce(updateListSection, 300);
-
-        // Adding the search bar if it is enabled
-        if (targetBlock.getAttribute('data-search-enabled') === 'true') {
-            const { wrapper, element } = createFilterElement({
-                type: 'text',
-                id: 'list-section-search-bar',
-                placeholder: 'Search items...',
-                eventHandler: debouncedUpdate
-            });
-            cache.searchBar = element;
-            filterWrapper.appendChild(wrapper);
-        }
-        // Adding the category select bar if it is enabled (will be populated later)
-        if (targetBlock.getAttribute('data-categories-enabled') === 'true') {
-            const { wrapper, element } = createFilterElement({
-                type: 'select',
-                id: 'list-section-select-bar',
-                options: [{ value: 'all', text: 'All Categories' }],
-                eventHandler: updateListSection
-            });
-            cache.categorySelect = element;
-            filterWrapper.appendChild(wrapper);
+        /**
+         * Create form styling effects element
+         */
+        createFormEffects() {
+            const span = document.createElement('span');
+            span.className = 'form-input-effects';
+            span.innerHTML = '<span class="form-input-effects-border"></span>';
+            return span;
         }
 
-        // Adding the pricing filter if it is enabled
-        if (targetBlock.getAttribute('data-pricing-enabled') === 'true') {
-            const { wrapper, element } = createFilterElement({
-                type: 'select',
-                id: 'list-section-pricing-bar',
-                options: [
-                    { value: 'all', text: 'All Pricing' },
-                    { value: 'Free', text: 'Free' },
-                    { value: 'Subscription', text: 'Subscription' },
-                    { value: 'Lifetime', text: 'Lifetime Access' }
-                ],
-                eventHandler: updateListSection
-            });
-            cache.pricingSelect = element;
-            filterWrapper.appendChild(wrapper);
-        }
+        /**
+         * Apply wrapper alignment and spacing styles
+         */
+        applyWrapperStyles(wrapper) {
+            const alignmentMap = {
+                'center': 'center',
+                'right': 'flex-end',
+                'left': 'flex-start'
+            };
 
-        // Adding the sorting select bar if it is enabled
-        if (targetBlock.getAttribute('data-sorting-enabled') === 'true') {
-            const { wrapper, element } = createFilterElement({
-                type: 'select',
-                id: 'list-section-sorting-bar',
-                options: [
-                    { value: 'none', text: 'Sort by...' },
-                    { value: 'a-z', text: 'Sort A-Z' },
-                    { value: 'z-a', text: 'Sort Z-A' }
-                ],
-                eventHandler: updateListSection
-            });
-            cache.sortingSelect = element;
-            filterWrapper.appendChild(wrapper);
-        }
-        // Insert filter wrapper and apply styling
-        const userItemsList = listSection.querySelector('.user-items-list');
-        const listUl = listSection.querySelector('ul');
+            if (alignmentMap[this.config.horizontalAlignment]) {
+                wrapper.style.justifyContent = alignmentMap[this.config.horizontalAlignment];
+            }
 
-        if (userItemsList) {
-            userItemsList.insertBefore(filterWrapper, userItemsList.firstChild);
-
-            // Add inset class if required
-            if (listUl?.getAttribute('data-layout-width') === 'inset') {
-                filterWrapper.classList.add('inset');
+            if (this.config.bottomMargin) {
+                wrapper.style.marginBottom = this.config.bottomMargin;
             }
         }
 
-        // Apply horizontal alignment
-        const alignment = targetBlock.getAttribute('data-horizontal-alignment');
-        const alignmentMap = {
-            'center': 'center',
-            'right': 'flex-end',
-            'left': 'flex-start'
-        };
-        if (alignmentMap[alignment]) {
-            filterWrapper.style.justifyContent = alignmentMap[alignment];
-        }
+        /**
+         * Populate category dropdown with discovered categories
+         */
+        populateCategoryOptions() {
+            if (!this.ui.categorySelect || this.categories.size === 0) return;
 
-        // Apply bottom margin
-        const spacing = targetBlock.getAttribute('data-bottom-margin');
-        if (spacing) {
-            filterWrapper.style.marginBottom = spacing;
-        }
-    }
+            const sortedCategories = Array.from(this.categories).sort();
+            const fragment = document.createDocumentFragment();
 
-    // Helper function to extract metadata (categories, pricing) from item descriptions
-    function extractMetadataFromItems(listSection) {
-        const categories = new Set();
-        const listItemDescriptions = listSection.querySelectorAll('.list-item-content__description p');
-        const displayCategories = targetBlock.getAttribute('data-display-categories') === 'true';
-        const displayPricing = targetBlock.getAttribute('data-display-pricing') === 'true';
-
-        listItemDescriptions.forEach(description => {
-            const text = description.innerText;
-            const listItem = description.closest('.list-item');
-            if (!listItem) return;
-
-            let updatedText = text;
-
-            // Extract categories
-            const categoryMatches = text.match(/#category\/([^\/]*)\//g);
-            if (categoryMatches) {
-                const categoryList = categoryMatches.map(match => match.match(/#category\/([^\/]*)\//)[1]);
-                const existingCategories = listItem.getAttribute('data-category')?.split(',').filter(Boolean) || [];
-                const combinedCategories = [...new Set([...existingCategories, ...categoryList])];
-
-                listItem.setAttribute('data-category', combinedCategories.join(','));
-                categoryList.forEach(cat => categories.add(cat));
-                updatedText = updatedText.replace(/#category\/([^\/]*)\//g, '');
-            }
-
-            // Extract pricing
-            const pricingMatch = text.match(/#pricing\/([^\/]*)\//);
-            if (pricingMatch) {
-                const pricing = pricingMatch[1];
-                listItem.setAttribute('data-pricing', pricing);
-                updatedText = updatedText.replace(/#pricing\/([^\/]*)\//g, '');
-            }
-
-            // Display categories if enabled
-            if (displayCategories && categoryMatches) {
-                displayMetadataTags(listItem, 'categories',
-                    listItem.getAttribute('data-category').split(','));
-            }
-
-            // Display pricing if enabled
-            if (displayPricing && pricingMatch) {
-                displayMetadataTags(listItem, 'pricing',
-                    [listItem.getAttribute('data-pricing')]);
-            }
-
-            // Update description text and remove if empty
-            description.innerText = updatedText.trim();
-            if (!description.innerText) {
-                description.remove();
-            }
-
-            listItem.classList.add('visible');
-        });
-
-        return Array.from(categories);
-    }
-
-    // Helper function to display metadata tags (categories or pricing)
-    function displayMetadataTags(listItem, type, values) {
-        const textWrapper = listItem.querySelector('.list-item-content__text-wrapper');
-        if (!textWrapper) return;
-
-        const containerClass = type === 'categories' ? 'list-item-categories' : 'list-item-pricing';
-        const tagClass = type === 'categories' ? 'list-item-category' : 'list-item-pricing-tag';
-
-        // Remove existing container
-        textWrapper.querySelector(`.${containerClass}`)?.remove();
-
-        // Create new container
-        const container = document.createElement('div');
-        container.classList.add(containerClass);
-
-        // Set margin to match description
-        const descriptionElement = listItem.querySelector('.list-item-content__description');
-        if (descriptionElement) {
-            const topMargin = window.getComputedStyle(descriptionElement).marginTop;
-            container.style.marginBottom = topMargin;
-        }
-
-        // Add tags
-        values.forEach(value => {
-            const tag = document.createElement('span');
-            tag.classList.add(tagClass);
-            tag.innerText = value;
-            container.appendChild(tag);
-        });
-
-        // Insert at the beginning of text wrapper
-        textWrapper.insertBefore(container, textWrapper.firstChild);
-    }
-
-    // Helper function to add the categories to the select bar
-    function addCategoryOptions(categories) {
-        if (!cache.categorySelect || categories.length === 0) return;
-
-        const fragment = document.createDocumentFragment();
-        categories.forEach(category => {
-            const option = document.createElement('option');
-            option.value = category;
-            option.innerText = category;
-            fragment.appendChild(option);
-        });
-        cache.categorySelect.appendChild(fragment);
-    }
-
-    // Optimized function to update list section with filtering and sorting
-    function updateListSection() {
-        const listSection = cache.listSection || findListSection();
-        if (!listSection) return;
-
-        // Use cached elements
-        const searchQuery = cache.searchBar?.value.toLowerCase().trim() || '';
-        const categoryQuery = cache.categorySelect?.value || 'all';
-        const pricingQuery = cache.pricingSelect?.value || 'all';
-        const sortOption = cache.sortingSelect?.value || 'none';
-
-        // Cache list items if not already cached
-        if (cache.listItems.length === 0) {
-            cache.listItems = Array.from(listSection.querySelectorAll('.list-item'));
-        }
-
-        const listItems = cache.listItems;
-        const listContainer = listSection.querySelector('.user-items-list ul');
-        if (!listContainer) return;
-
-        // Filter items
-        const visibleItems = listItems.filter(item => {
-            const itemName = item.querySelector('.list-item-content__title')?.innerText.toLowerCase() || '';
-            const itemDescription = item.querySelector('.list-item-content__description')?.innerText.toLowerCase() || '';
-            const itemCategories = item.getAttribute('data-category')?.split(',').filter(Boolean) || [];
-            const itemPricing = item.getAttribute('data-pricing') || '';
-
-            // Search filter
-            const matchesSearch = !searchQuery || (
-                itemName.includes(searchQuery) ||
-                itemDescription.includes(searchQuery) ||
-                itemCategories.some(category => category.toLowerCase().includes(searchQuery))
-            );
-
-            // Category filter
-            const matchesCategory = categoryQuery === 'all' || itemCategories.includes(categoryQuery);
-
-            // Pricing filter
-            const matchesPricing = pricingQuery === 'all' || itemPricing === pricingQuery;
-
-            return matchesSearch && matchesCategory && matchesPricing;
-        });
-
-        // Sort visible items if needed
-        if (sortOption !== 'none') {
-            visibleItems.sort((a, b) => {
-                const titleA = a.querySelector('.list-item-content__title')?.innerText.toLowerCase() || '';
-                const titleB = b.querySelector('.list-item-content__title')?.innerText.toLowerCase() || '';
-
-                return sortOption === 'a-z'
-                    ? titleA.localeCompare(titleB)
-                    : titleB.localeCompare(titleA);
-            });
-        }
-
-        // Batch DOM updates using requestAnimationFrame
-        requestAnimationFrame(() => {
-            // Hide all items first
-            listItems.forEach(item => {
-                item.classList.remove('visible');
-                item.classList.add('hidden');
+            sortedCategories.forEach(category => {
+                const option = document.createElement('option');
+                option.value = category;
+                option.textContent = category;
+                fragment.appendChild(option);
             });
 
-            // Show and reorder visible items
+            this.ui.categorySelect.appendChild(fragment);
+        }
+
+        /**
+         * Main filter update function - optimized for performance
+         */
+        updateFilters() {
+            const searchQuery = this.ui.searchBar?.value.toLowerCase().trim() ?? '';
+            const categoryQuery = this.ui.categorySelect?.value ?? 'all';
+            const pricingQuery = this.ui.pricingSelect?.value ?? 'all';
+            const sortOption = this.ui.sortingSelect?.value ?? 'none';
+
+            // Filter items using cached data (no DOM queries!)
+            const visibleItems = this.listItems.filter(item => {
+                const data = itemDataCache.get(item);
+                if (!data) return false;
+
+                // Search filter
+                const matchesSearch = !searchQuery || (
+                    data.title.includes(searchQuery) ||
+                    data.description.includes(searchQuery) ||
+                    data.categories.some(cat => cat.toLowerCase().includes(searchQuery))
+                );
+
+                // Category filter
+                const matchesCategory = categoryQuery === 'all' ||
+                    data.categories.includes(categoryQuery);
+
+                // Pricing filter
+                const matchesPricing = pricingQuery === 'all' ||
+                    data.pricing === pricingQuery;
+
+                return matchesSearch && matchesCategory && matchesPricing;
+            });
+
+            // Sort using cached titles (no DOM queries!)
+            if (sortOption !== 'none') {
+                visibleItems.sort((a, b) => {
+                    const titleA = itemDataCache.get(a)?.title ?? '';
+                    const titleB = itemDataCache.get(b)?.title ?? '';
+
+                    return sortOption === 'a-z'
+                        ? titleA.localeCompare(titleB)
+                        : titleB.localeCompare(titleA);
+                });
+            }
+
+            // Batch DOM updates
+            this.renderFilteredItems(visibleItems);
+        }
+
+        /**
+         * Render filtered items with batched DOM operations
+         */
+        renderFilteredItems(visibleItems) {
+            const visibleSet = new Set(visibleItems);
+
+            // Single requestAnimationFrame for all updates
             requestAnimationFrame(() => {
+                // Hide all items and remove visible class
+                this.listItems.forEach(item => {
+                    item.classList.remove('visible');
+                    item.classList.add('hidden');
+                });
+
+                // Use DocumentFragment for batch append
+                const fragment = document.createDocumentFragment();
                 visibleItems.forEach(item => {
-                    listContainer.appendChild(item);
                     item.classList.remove('hidden');
-                    // Small delay for animation
-                    setTimeout(() => item.classList.add('visible'), 10);
+                    fragment.appendChild(item);
+                });
+
+                // Single DOM append
+                this.listContainer.appendChild(fragment);
+
+                // Trigger visibility animation in next frame
+                requestAnimationFrame(() => {
+                    visibleItems.forEach(item => {
+                        item.classList.add('visible');
+                    });
                 });
             });
-        });
+        }
     }
 
-    // Initialize the filter system
-    const listSection = findListSection();
-    if (!listSection) return;
+    /**
+     * Debounce utility function
+     */
+    function debounce(func, wait) {
+        let timeoutId = null;
 
-    const categories = extractMetadataFromItems(listSection);
-    addFilterComponents(listSection);
-    addCategoryOptions(categories);
-}
+        return function debounced(...args) {
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+            }
 
-document.addEventListener('DOMContentLoaded', initialiseListSectionFilters);
+            timeoutId = setTimeout(() => {
+                timeoutId = null;
+                func.apply(this, args);
+            }, wait);
+        };
+    }
+
+    /**
+     * Initialize when DOM is ready
+     */
+    function init() {
+        const targetBlock = document.querySelector(CONFIG.SELECTORS.targetBlock);
+        if (!targetBlock) return;
+
+        const controller = new FilterController(targetBlock);
+        controller.init();
+
+        // Expose controller for external access if needed
+        window.filterController = controller;
+    }
+
+    // Start initialization
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+})();
